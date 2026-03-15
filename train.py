@@ -119,11 +119,11 @@ def train():
 
     thresholds_by_sd = metrics.set_index("snapshot_day")["threshold"].to_dict()
 
-    save_pickle(models, os.path.join(ARTIFACT_DIR, "models_by_sd.pkl"))
-    save_pickle(thresholds_by_sd, os.path.join(ARTIFACT_DIR, "thresholds_by_sd.pkl"))
-    save_pickle(feature_cols_final, os.path.join(ARTIFACT_DIR, "feature_cols.pkl"))
-    save_pickle(df_model_final, os.path.join(ARTIFACT_DIR, "df_model_final.pkl"))
-    save_pickle(scored, os.path.join(ARTIFACT_DIR, "scored_by_sd.pkl"))
+    save_pickle(models, "models_by_sd.pkl")
+    save_pickle(thresholds_by_sd, "thresholds_by_sd.pkl")
+    save_pickle(feature_cols_final, "feature_cols.pkl")
+    save_pickle(df_model_final, "df_model_final.pkl")
+    save_pickle(scored, "scored_by_sd.pkl")
 
     metrics.to_csv(os.path.join(ARTIFACT_DIR, "metrics_by_sd.csv"), index=False)
 
