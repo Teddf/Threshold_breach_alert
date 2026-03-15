@@ -110,7 +110,7 @@ def get_day_models(
             continue
 
         # time split
-        train_df, test_df = time_aware_split_by_month(df_sd, split_month=SPLIT_MONTH)
+        train_df, test_df = time_aware_split_by_month(df_sd, split_month=split_month)
         if len(train_df) == 0 or len(test_df) == 0:
             continue
         if train_df["roas_breach"].nunique() < 2 or test_df["roas_breach"].nunique() < 2:

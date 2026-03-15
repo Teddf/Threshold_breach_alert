@@ -117,24 +117,17 @@ def _build_reference_pool(
     feature_cols: list[str],
     month_col: str = "month",
 ) -> pd.DataFrame:
-    """
-    Reference distribution for percentiles + baseline rates:
-    - pre-split only
-    - same snapshot_day
-    - same game_id (your choice)
-    """
     m = (
-        (df_all["snapshot_day"].astype(int) == int(snapshot_day))
+        (df_all["snapshot_day"].astype(int) == int(snapshot_day)) &
+        (df_all["game_id"] == game_id)
     )
     ref = df_all.loc[m].copy()
 
-    # keep only PRE split months if possible
     if month_col in ref.columns:
         ref_month = pd.to_datetime(ref[month_col])
         ref = ref.loc[ref_month < pd.Timestamp(split_month)].copy()
 
-    # keep required columns if present
-    keep = ["roas_breach"] + [c for c in feature_cols if c in ref.columns]
+    keep = ["roas_breach", "game_breach_rate_sd", "n_game_sd"] + [c for c in feature_cols if c in ref.columns]
     keep = [c for c in keep if c in ref.columns]
     return ref[keep].copy()
 
@@ -190,7 +183,7 @@ def _recommend_actions(p_breach: float, threshold: float, metrics: dict, drivers
 
     margin = p_breach - threshold
     late_gap = metrics.get("behind_schedule_signal")
-    req_per_day = metrics.get("required_revenue_per_remaining_day")
+    req_per_day = metrics.get("revenue_needed_to_hit_target")
 
     # helper: does a driver appear in top impacts
     top_feats = set(drivers_df["feature"].tolist()) if drivers_df is not None and len(drivers_df) else set()
@@ -368,7 +361,6 @@ def explain_breach_for_client(
         shrinkage=20.0,
     )
     margin = float(p_adjusted - thr)
-    bucket_info = _risk_bucket_from_quantiles(p_adjusted, thr)
 
     # ---- label if present ----
     actual = None
@@ -466,23 +458,31 @@ def explain_breach_for_client(
     if len(ref_pool) > 0:
         p_ref_model = model.predict_proba(ref_pool[feature_cols])[:, 1]
 
-        if "game_breach_rate_sd" in ref_pool.columns:
-            gp_ref = ref_pool["game_breach_rate_sd"].astype(float).to_numpy()
-        else:
-            gp_ref = np.full(len(ref_pool), np.nan)
+    if "game_breach_rate_sd" in ref_pool.columns:
+        gp_ref = ref_pool["game_breach_rate_sd"].astype(float).to_numpy()
+    else:
+        gp_ref = np.full(len(ref_pool), np.nan)
 
-        ref_prob_adj = np.array([
-            _compute_adjusted_probability(
-                p_model=pm,
-                game_breach_rate_sd=(None if np.isnan(gp) else gp),
-                n_game_sd=row.get("n_game_sd"),
-                shrinkage=10.0,
-            )[0]
-            for pm, gp in zip(p_ref_model, gp_ref)
-        ])
+    if "n_game_sd" in ref_pool.columns:
+        n_ref = ref_pool["n_game_sd"].astype(float).to_numpy()
+    else:
+        n_ref = np.full(len(ref_pool), np.nan)
+
+    ref_prob_adj = np.array([
+        _compute_adjusted_probability(
+            p_model=pm,
+            game_breach_rate_sd=(None if np.isnan(gp) else gp),
+            n_game_sd=(None if np.isnan(nr) else nr),
+            shrinkage=10.0,
+        )[0]
+        for pm, gp, nr in zip(p_ref_model, gp_ref, n_ref)
+    ])
 
     risk_percentile = _risk_percentile(p_adjusted, ref_prob_adj)
-
+    if ref_prob_adj.size >= 20:
+        bucket_info = _risk_bucket_from_quantiles(p_adjusted, ref_prob_adj)
+    else:
+        bucket_info = _risk_bucket_from_margin(p_adjusted, thr)
 
 
     # ---- actions ----
